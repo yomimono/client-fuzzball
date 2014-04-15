@@ -76,6 +76,7 @@ class BOOTP_am(AnsweringMachine):
 # lower layer, over which we don't have a whole mess of control.
 class DHCP_fuzz_am(BOOTP_am):
     function_name="fuzzy_dhcpd"
+    filter = "ether src c0:ff:ee:c0:ff:ee"
     test_counter = 0
     def make_reply(self, req):
         resp = BOOTP_am.make_reply(self, req)
@@ -104,7 +105,7 @@ class DHCP_fuzz_am(BOOTP_am):
 
 	    # also, in the absence of problems, we don't check again, which is fairly suboptimal.  
 	    # it might be better to write a VM that purposely runs through the state machine.
-        print resp.xid
+        resp.show() 
         return resp
     
 
