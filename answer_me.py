@@ -1,5 +1,6 @@
 import struct
 
+from itertools import groupby
 from scapy.packet import *
 from scapy.fields import *
 from scapy.ansmachine import *
@@ -13,7 +14,7 @@ from scapy.sendrecv import srp1
 
 class BOOTP_am(AnsweringMachine):
     function_name = "bootpd"
-    filter = "udp and port 68 and port 67"
+    filter = "udp and port 67"
     send_function = staticmethod(sendp)
     def parse_options(self, pool=Net("192.168.1.128/25"), network="192.168.1.0/24",gw="192.168.1.1",
                       domain="localnet", renewal_time=60, lease_time=1800):
@@ -78,10 +79,17 @@ class DHCP_fuzz_am(BOOTP_am):
     function_name="fuzzy_dhcpd"
     filter = "ether src c0:ff:ee:c0:ff:ee"
     test_counter = 0
+    def find_xid(self, packets):
+	    for key, group in groupby(packets, lambda packet : packet.xid):
+		    for thing in group:
+			    print "The XID is %d in a packet with message-type %d." % (key, thing.getlayer(4).options)
+
+    def options_array(packet): 
+	    packet.getlayer(4).options
+    def is_message_type(packet):
+	    packet[0] == 'message_type'
     def make_reply(self, req):
         resp = BOOTP_am.make_reply(self, req)
-				# TODO: a way to limit this to a specific MAC or interface;
-				# I am NOT A FAN of accidentally serving to all requestors
         if DHCP in req:
             dhcp_options = [(op[0],{1:2,3:5}.get(op[1],op[1]))
                             for op in req[DHCP].options
@@ -105,7 +113,6 @@ class DHCP_fuzz_am(BOOTP_am):
 
 	    # also, in the absence of problems, we don't check again, which is fairly suboptimal.  
 	    # it might be better to write a VM that purposely runs through the state machine.
-        resp.show() 
         return resp
     
 
