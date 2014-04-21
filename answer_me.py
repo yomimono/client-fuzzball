@@ -1,6 +1,7 @@
 import struct
 
 from itertools import groupby
+from operator import *
 from scapy.packet import *
 from scapy.fields import *
 from scapy.ansmachine import *
@@ -11,6 +12,52 @@ from scapy.volatile import RandField
 
 from scapy.arch import get_if_raw_hwaddr
 from scapy.sendrecv import srp1
+
+def get_success_xid(packet):
+    raw_stuff = packet.getlayer(Raw).load
+    if(len(raw_stuff) == 4):
+    	return struct.unpack(">L",packet.getlayer(Raw).load)[0]
+    else:
+    	return 0
+def xid_from_success_report_packets(packet_list):
+    possible_packets=filter(lambda p: p.haslayer(UDP) and p.haslayer(Raw) and len(p.getlayer(Raw).load) == 4 and not p.haslayer(DHCP), packet_list)
+    return map (get_success_xid, possible_packets)
+def xid_from_dhcp_requests(packet_list):
+	return map(lambda f: f.xid, filter(lambda p: p.haslayer(UDP) and p.haslayer(BOOTP) and p.haslayer(DHCP), packet_list))
+def options_array(packet): 
+    try:
+    	return packet.getlayer(4).options
+    except AttributeError:
+	# do nothing
+	return None
+def find_disparate_xid(packet_list):
+    return (set(xid_from_dhcp_requests(packet_list)) ^ set(xid_from_success_report_packets(packet_list)))
+def find_dhcp_conversation_by_xid(xid, packet_list):
+    return packet_list.filter(lambda p: p.haslayer(DHCP) and p.xid == xid)
+def get_message_types(options):
+	return map(lambda p: delicious_innards(0, p), options)
+def get_message_payloads(options):
+	return map(lambda p: delicious_innards(1, p), options)
+def delicious_innards(index, thing):
+	if(type(thing) is tuple and len(thing) > (index)):
+		return thing[index]
+	else: 
+		return thing
+def tagged_conversation_options(batch):
+	problem_xids = list(find_disparate_xid(batch))
+	problem_convos=map (lambda l: (l, find_dhcp_conversation_by_xid(l, batch)), problem_xids)
+	return problem_convos
+def pickax_for_options(list_of_packets):
+	option_types_encountered=map(get_message_types, filter(lambda p: p is not None, map(options_array, list_of_packets)))
+	return (list(set(reduce(operator.add, option_types_encountered))))
+def dig_out_interesting_crap(xid, list_of_packets):
+	return (xid, pickax_for_options(list_of_packets))
+	# we're mapping over a list of packets.
+	# each packet has a list of options, which are themselves tuples.
+	# dig out the message types, and make a list of each message type and
+	# which xid(s) it was represented in.
+def get_dhcp_options_from_conversation(next_batch):
+	return map (lambda p: dig_out_interesting_crap(p[0],p[1]), tagged_conversation_options(next_batch))
 
 class BOOTP_am(AnsweringMachine):
     function_name = "bootpd"
@@ -64,55 +111,37 @@ class BOOTP_am(AnsweringMachine):
         repb.ciaddr = self.gw
         repb.giaddr = self.gw
         del(repb.payload)
-	# without fragmentation, we fail because the packet is too long.
+	# TODO: without fragmentation, we fail because the packet is too long.
 	# with fragmentation, we fail because we're trying to compare 
 	# a list to a single object.  The correct answer is probably to 
 	# truncate and force the answer not to exceed the size of a packet.
         rep=Ether(dst=mac)/IP(dst=ip)/UDP(sport=req.dport,dport=req.sport)/repb
         return rep
 
-# Fuzzing answering machines don't seem super obvious to construct,
-# since we don't have direct access to the layers we're looking at -
-# the construction of our delicous packet sandwich is happening at a 
-# lower layer, over which we don't have a whole mess of control.
 class DHCP_fuzz_am(BOOTP_am):
     function_name="fuzzy_dhcpd"
-    filter = "ether src c0:ff:ee:c0:ff:ee"
+    filter = "ether src 00:16:3e:6f:43:f4"
+    custom_options=[]
     test_counter = 0
-    def find_xid(self, packets):
-	    for key, group in groupby(packets, lambda packet : packet.xid):
-		    for thing in group:
-			    print "The XID is %d in a packet with message-type %d." % (key, thing.getlayer(4).options)
-
-    def options_array(packet): 
-	    packet.getlayer(4).options
-    def is_message_type(packet):
-	    packet[0] == 'message_type'
     def make_reply(self, req):
         resp = BOOTP_am.make_reply(self, req)
         if DHCP in req:
             dhcp_options = [(op[0],{1:2,3:5}.get(op[1],op[1]))
                             for op in req[DHCP].options
                             if type(op) is tuple  and op[0] == "message-type"]
-	    dhcp_options += RandDHCPOptions(size=1) # parameterize this?  it's a count
+	    dhcp_options += self.custom_options
+	    if(len(self.custom_options) == 0):  
+	    	dhcp_options += RandDHCPOptions(size=1) # parameterize this?  it's a count
 	    # of fuzzed options, not of their length, and their length could be any size)
 
 	    dhcp_options += ["end"]
-            resp /= DHCP(options=dhcp_options) # stick ourselves into the structure of resp
-	    # resp is now the thing that might be too long. how can we check?
+            resp /= DHCP(options=dhcp_options) 
+	    # TODO: resp may be too long for a single packet & fragmentation here crashes scapy
 
 	    # also, is fragmentation allowed in dhcp? it seems like it shouldn't be, but 
 	    # on the other hand, if PXE actually works this way, I feel like it kinda 
 	    # must be.
-
-	    # It's also not clear to me how we can really make any kind of statement about program
-	    # correctness in this framework.  I'd really like to take a look at Sculley or Sulley
-	    # or whatever it is instead - there may be some way to say "and I fuzzed with this percent 
-	    # of coverage with this" rather than just fuzz a bunch and call it good if you didn't 
-	    # get anything back.
-
-	    # also, in the absence of problems, we don't check again, which is fairly suboptimal.  
-	    # it might be better to write a VM that purposely runs through the state machine.
+	self.test_counter += 1
         return resp
     
 
