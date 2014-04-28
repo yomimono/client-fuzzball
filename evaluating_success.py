@@ -20,7 +20,6 @@ def options_array(packet):
     try:
     	return packet.getlayer(4).options
     except AttributeError:
-	# do nothing
 	return None
 def find_disparate_xid(packet_list):
     return list(set(xid_from_dhcp_messages(packet_list)) ^ set(xid_from_success_report_packets(packet_list)))
