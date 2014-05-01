@@ -72,21 +72,23 @@ class BOOTP_am(AnsweringMachine):
         rep=Ether(dst=mac)/IP(dst=ip)/UDP(sport=req.dport,dport=req.sport)/repb
         return rep
 
-class DHCP_fuzz_am(BOOTP_am):
+class DHCP_option_fuzzing_am(BOOTP_am):
     function_name="fuzzy_dhcpd"
     filter = "ether src c0:ff:ee:c0:ff:ee"
     custom_options=[]
-    test_counter = 0
-    packets = sniff()
     def make_reply(self, req):
         resp = BOOTP_am.make_reply(self, req)
         if DHCP in req:
             dhcp_options = [(op[0],{1:2,3:5}.get(op[1],op[1]))
                             for op in req[DHCP].options
                             if type(op) is tuple  and op[0] == "message-type"]
+	    dhcp_options += [('lease_time', 10)]
 	    dhcp_options += self.custom_options
 	    if(len(self.custom_options) == 0):  
-	    	dhcp_options += RandDHCPOptions(size=1) # parameterize this?  it's a count
+		option = RandDHCPOptions(size=1)# parameterize this?  it's a count
+		while(option[0] == 'message-type'):
+			option = RandDHCPOptions(size=1) #randomizer allows 2nd message type
+	    	dhcp_options += option 
 	    # of fuzzed options, not of their length, and their length could be any size)
 
 	    dhcp_options += ["end"]
@@ -96,7 +98,6 @@ class DHCP_fuzz_am(BOOTP_am):
 	    # also, is fragmentation allowed in dhcp? it seems like it shouldn't be, but 
 	    # on the other hand, if PXE actually works this way, I feel like it kinda 
 	    # must be.
-	self.test_counter += 1
+	#self.test_counter += 1
         return resp
-    
 
