@@ -59,6 +59,9 @@ def get_request_type(payload):
 	tokens = components[0].split(' ')
 	return tokens[0]
 
+def get_request_types(payloadList):
+	return map(lambda p: get_request_type(p[0]), payloadList)
+
 def get_path(payload):
 	components = payload.split('\r\n')
 	tokens = components[0].split(' ')
