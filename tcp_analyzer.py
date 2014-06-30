@@ -50,8 +50,6 @@ def echo_echoed(packetList):
 		
 
 # TODO: enforce sender identities & seq/ack numbers more fully.
-# right now, this won't detect the (common!) case where subsequent connections from the same
-# source port get an ACK packet instead of a SYN/ACK, indicating lingering state
 def full_conversation(packetList): 
 	syns = packetList.filter(lambda p: isset(p, 2))
 	synacks = packetList.filter(lambda p: isset(p, 18))
