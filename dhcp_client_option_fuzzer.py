@@ -65,7 +65,7 @@ class BOOTP_am(AnsweringMachine):
         repb.ciaddr = self.gw
         repb.giaddr = self.gw
         del(repb.payload)
-	# TODO: without fragmentation, we fail because the packet is too long.
+	# TODO: with large packets and without fragmentation, we fail because the packet is too long.
 	# with fragmentation, we fail because we're trying to compare 
 	# a list to a single object.  The correct answer is probably to 
 	# truncate and force the answer not to exceed the size of a packet.
@@ -74,8 +74,8 @@ class BOOTP_am(AnsweringMachine):
 
 class DHCP_option_fuzzing_am(BOOTP_am):
     function_name="fuzzy_dhcpd"
-    filter = "ether src c0:ff:ee:c0:ff:ee"
     custom_options=[]
+    send_options={"iface":"xenbr0"}
     def make_reply(self, req):
         resp = BOOTP_am.make_reply(self, req)
         if DHCP in req:
@@ -86,7 +86,7 @@ class DHCP_option_fuzzing_am(BOOTP_am):
 	    dhcp_options += self.custom_options
 	    if(len(self.custom_options) == 0):  
 		option = RandDHCPOptions(size=1)# parameterize this?  it's a count
-		while(option[0] == 'message-type'):
+		while(option[0][0] == 'message-type'):
 			option = RandDHCPOptions(size=1) #randomizer allows 2nd message type
 	    	dhcp_options += option 
 	    # of fuzzed options, not of their length, and their length could be any size)
