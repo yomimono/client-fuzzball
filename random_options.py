@@ -10,18 +10,6 @@ class RandVariableOptions(RandField):
 			size = RandNumExpo(0.05)
 		self.size = size
 
-class IPOption_Numerical_Type(IPOption):
-	def __init__(self, option_number=0, option_data=''):
-		self.option_number = option_number
-		self.option_data = option_data
-	copy_flag = 1 #TODO: probably should parameterize this
-	name = "Randomly generated IP Option"
-	fields_desc = [ _IPOption_HDR, 
-			FieldLenField("length", None, fmt="B", length_of="data", adjust=lambda pkt,l:l+2),
-			StrField("data", "")
-			]
-
-
 class RandIPOptions(RandVariableOptions):
 	optionLengths = {
 			0 : 0, 
@@ -31,6 +19,7 @@ class RandIPOptions(RandVariableOptions):
 	}
 
 	def _fix(self):
+		op=[]
 		optionNumber = RandNum(0, 255)
 			# Wonder whether any IP stacks blow up if you send them 
 			# an infinite supply of fragmented IP 
@@ -45,7 +34,9 @@ class RandIPOptions(RandVariableOptions):
 			optionValue = ''
 		else:
 			optionValue = RandBin(size=optionLength)
-		op.append(IPOption_Numerical_Type(option_number = optionNumber, option_data = optionValue))
+
+		# build a string consisting of the hex rep of option, length, & random data
+		op.append(IPOption(chr(optionNumber) + chr(optionLength) + str(optionValue))) 
 		return op
 
 class RandTCPOptions(RandVariableOptions):
