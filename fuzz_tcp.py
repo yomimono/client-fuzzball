@@ -1,16 +1,21 @@
 #!/usr/bin/python
 from scapy.all import *
-from rand_tcp import *
+from random_options import RandTCPOptions
 import signal
 
 def one_convo(local_host, local_port, remote_host, remote_port, isn):
 	current_seq = isn 
 	capture_filter = "tcp port " + str(remote_port)
 	verbosity = False
+	timeout = 5
 
 	ip=IP(src=local_host, dst=remote_host)
 	TCP_SYN=fuzz(TCP(sport=local_port, dport=remote_port, flags="S", seq=current_seq, options=RandTCPOptions(size=1)))
-	TCP_SYNACK=sr1(ip/TCP_SYN, filter=capture_filter, verbose=verbosity)
+	TCP_SYNACK=sr1(ip/TCP_SYN, timeout=timeout, filter=capture_filter, verbose=verbosity)
+
+	if(TCP_SYNACK is None):
+		# timed out getting a response.  Give up and try the next run.
+		return
 
 	if(TCP_SYNACK[TCP].flags & 18L != 18L):
 		print "SYN/ACK not received in response to SYN.  Sending RST and aborting this iteration."
